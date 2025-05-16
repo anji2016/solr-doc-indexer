@@ -1,5 +1,7 @@
 package com.solr.model;
 
+import java.util.Date;
+
 import org.apache.solr.client.solrj.beans.Field;
 import lombok.Data;
 
@@ -14,14 +16,7 @@ public class Document {
 	@Field
 	private String category;
 	@Field
-    private String timestamp;
+	private Date timestamp; 
 	@Field("search_query")
 	private String searchQuery; // Store the search query string
-	
-	// Optional method to set the timestamp to the current time
-    public void setTimestampToNow() {
-        // Get the current timestamp in ISO 8601 format
-        this.timestamp = java.time.Instant.now().atOffset(java.time.ZoneOffset.UTC)
-                .format(java.time.format.DateTimeFormatter.ISO_INSTANT);
-    }
 }

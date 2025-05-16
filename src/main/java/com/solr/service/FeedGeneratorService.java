@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.nio.file.*;
 import java.time.Instant;
+import java.util.Date;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -59,7 +60,7 @@ public class FeedGeneratorService {
         doc.setContent(content);
         doc.setCategory(category);
         doc.setSearchQuery(doc.getTitle() + " " + doc.getContent() + " " + doc.getCategory());
-        doc.setTimestamp(Instant.now().toString());
+        doc.setTimestamp(Date.from(Instant.now()));
 
         solrClient.addBean(doc);
         solrClient.commit();
