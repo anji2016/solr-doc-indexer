@@ -14,7 +14,7 @@ public class SolrController {
     
     @GetMapping("/generate")
     public ResponseEntity<String> generateFeed() throws Exception {
-        feedGeneratorService.generateFeed();
+        feedGeneratorService.feedContentToSolr();
         return ResponseEntity.ok("Feed generated");
     }
 

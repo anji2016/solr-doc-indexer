@@ -1,69 +1,98 @@
 package com.solr.service;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-
+import com.solr.model.Document;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.solr.client.solrj.SolrClient;
+import org.apache.solr.client.solrj.SolrServerException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import com.solr.model.Document;
+import java.io.IOException;
+import java.nio.file.*;
+import java.time.Instant;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class FeedGeneratorService {
-	@Value("${feed.file-path}")
-	private String filePath;
-	@Autowired
-	private SolrClient solrClient;
-	
-	public void generateFeed() throws Exception {
-        List<String> paths = Files.readAllLines(Paths.get(filePath));
-        List<Document> docs = new ArrayList<>();
 
-        for (String pathStr : paths) {
-            Path path = Paths.get(pathStr.trim());
-            String category = getCategory(pathStr);
+    @Value("${feed.file-path}")
+    private String filePath;
 
-            Document doc = new Document();
-            doc.setId(UUID.randomUUID().toString());
-            doc.setCategory(category);
-            doc.setTitle(path.getFileName().toString());
+    @Value("${feed.delete-all.enabled:false}")
+    private boolean deleteAllEnabled;
 
-            if (pathStr.endsWith(".pdf")) {
-                doc.setContent(extractPdfText(path));
-            } else if (pathStr.endsWith(".js") || pathStr.endsWith(".jsx") || pathStr.endsWith(".html")) {
-                doc.setContent(Files.readString(path));
-            } else {
-                continue;
-            }
+    @Autowired
+    private SolrClient solrClient;
 
-            doc.setSearchQuery(doc.getTitle() + " " + doc.getContent() + " " + doc.getCategory());
-            docs.add(doc);
+    public void feedContentToSolr() throws IOException, SolrServerException {
+        if (deleteAllEnabled) {
+            deleteAllDocuments();
         }
 
-        solrClient.addBeans(docs);
+        List<String> lines = Files.readAllLines(Paths.get(filePath));
+
+        for (String line : lines) {
+            if (line.trim().isEmpty()) continue;
+
+            Path path = Paths.get(line.trim());
+            String fileName = path.getFileName().toString().toLowerCase();
+
+            if (fileName.endsWith(".pdf")) {
+                processAndIndex(path, "pdf", extractTextFromPdf(path));
+            } else if (fileName.endsWith(".jsx")) {
+                processAndIndex(path, "jsx", extractTextFromJsx(path));
+            }
+        }
+    }
+
+    private void processAndIndex(Path path, String category, String content) throws IOException, SolrServerException {
+        if (content == null || content.isBlank()) return;
+
+        Document doc = new Document();
+        doc.setId(generateIdFromPath(path));
+        doc.setTitle(path.getFileName().toString());
+        doc.setContent(content);
+        doc.setCategory(category);
+        doc.setSearchQuery(doc.getTitle() + " " + doc.getContent() + " " + doc.getCategory());
+        doc.setTimestamp(Instant.now().toString());
+
+        solrClient.addBean(doc);
         solrClient.commit();
     }
 
-	private String extractPdfText(Path path) throws IOException {
-	    try (PDDocument document = Loader.loadPDF(path.toFile())) {
-	        PDFTextStripper stripper = new PDFTextStripper();
-	        return stripper.getText(document);
-	    }
-	}
+    private String extractTextFromPdf(Path path) throws IOException {
+        try (PDDocument pdf = Loader.loadPDF(path.toFile())) {
+            return new PDFTextStripper().getText(pdf);
+        }
+    }
 
-    private String getCategory(String path) {
-        if (path.contains("react")) return "react";
-        if (path.contains("pdf")) return "pdf";
-        return "unknown";
+    private String extractTextFromJsx(Path path) throws IOException {
+        String rawContent = Files.readString(path);
+        StringBuilder extractedHtml = new StringBuilder();
+
+        Matcher matcher = Pattern.compile(">([^<]+)<").matcher(rawContent);
+        while (matcher.find()) {
+            extractedHtml.append(matcher.group(1).trim()).append(" ");
+        }
+        return extractedHtml.toString().trim();
+    }
+
+    public void deleteAllDocuments() throws SolrServerException, IOException {
+        solrClient.deleteByQuery("*:*");
+        solrClient.commit();
+    }
+
+    public void deleteDocumentById(String id) throws SolrServerException, IOException {
+        solrClient.deleteById(id);
+        solrClient.commit();
+    }
+
+    private String generateIdFromPath(Path path) {
+        return path.toAbsolutePath().toString().replace("\\", "/");
     }
 }
