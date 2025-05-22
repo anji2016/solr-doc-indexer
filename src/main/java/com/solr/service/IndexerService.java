@@ -1,7 +1,8 @@
 package com.solr.service;
 
-import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.InputStream;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Date;
@@ -21,60 +22,63 @@ import com.solr.model.JsonFeedEntry;
 
 @Service
 public class IndexerService {
-	@Value("${feed.json-path}")
-	private String jsonFilePath;
 
-	@Value("${feed.delete-all.enabled:false}")
-	private boolean deleteAllEnabled;
+    @Value("${feed.json-path}")
+    private String jsonFilePath; // e.g., "test/feed.json"
 
-	@Autowired
-	private SolrClient solrClient;
+    @Value("${feed.delete-all.enabled:false}")
+    private boolean deleteAllEnabled;
 
-	public void feedContentToSolr() throws IOException, SolrServerException {
-		if (deleteAllEnabled) {
-			deleteAllDocuments();
-		}
+    @Autowired
+    private SolrClient solrClient;
 
-		File file = new File(jsonFilePath);
-		ObjectMapper mapper = new ObjectMapper();
+    public void feedContentToSolr() throws IOException, SolrServerException {
+        if (deleteAllEnabled) {
+            deleteAllDocuments();
+        }
 
-		List<JsonFeedEntry> entries = mapper.readValue(file, new TypeReference<>() {
-		});
+        // Load JSON from classpath
+        InputStream inputStream = getClass().getClassLoader().getResourceAsStream(jsonFilePath);
+        if (inputStream == null) {
+            throw new FileNotFoundException("JSON file not found in classpath: " + jsonFilePath);
+        }
 
-		for (JsonFeedEntry entry : entries) {
-			indexFromJson(entry);
-		}
-	}
+        ObjectMapper mapper = new ObjectMapper();
 
-	private void indexFromJson(JsonFeedEntry entry) throws IOException, SolrServerException {
-		String content;
+        List<JsonFeedEntry> entries = mapper.readValue(inputStream, new TypeReference<>() {});
+        for (JsonFeedEntry entry : entries) {
+            indexFromJson(entry);
+        }
+    }
 
-		content = extractTextFromUrl(entry.getUrl());
+    private void indexFromJson(JsonFeedEntry entry) throws IOException, SolrServerException {
+        String content = extractTextFromUrl(entry.getUrl());
 
-		Document doc = new Document();
-		doc.setId(entry.getId());
-		doc.setTitle(entry.getT());
-		doc.setContent(content);
-		doc.setCategory(entry.getDocType());
-		doc.setSearchQuery(String.join(" ", Arrays.asList(doc.getTitle(), doc.getContent(), doc.getCategory())));
-		doc.setTimestamp(Date.from(Instant.now()));
+        Document doc = new Document();
+        doc.setId(entry.getId());
+        doc.setTitle(entry.getT());
+        doc.setContent(content);
+        doc.setCategory(entry.getDocType());
+        doc.setSearchQuery(String.join(" ", Arrays.asList(doc.getTitle(), doc.getContent(), doc.getCategory())));
+        doc.setTimestamp(Date.from(Instant.now()));
 
-		solrClient.addBean(doc);
-		solrClient.commit();
-	}
+        solrClient.addBean(doc);
+        solrClient.commit();
+    }
 
-	private String extractTextFromUrl(String url) {
-		try {
-			org.jsoup.nodes.Document jsoupDoc = Jsoup.connect(url).get();
-			return jsoupDoc.text();
-		} catch (IOException e) {
-			e.printStackTrace();
-			return url; // fallback to URL itself if fetching fails
-		}
-	}
+    private String extractTextFromUrl(String url) {
+        try {
+            org.jsoup.nodes.Document jsoupDoc = Jsoup.connect(url).get();
+            return jsoupDoc.text();
+        } catch (IOException e) {
+            e.printStackTrace();
+            return url; // fallback to URL if fetching fails
+        }
+    }
 
-	public void deleteAllDocuments() throws SolrServerException, IOException {
-		solrClient.deleteByQuery("*:*");
-		solrClient.commit();
-	}
+    public void deleteAllDocuments() throws SolrServerException, IOException {
+        solrClient.deleteByQuery("*:*");
+        solrClient.commit();
+    }
 }
+
