@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.solr.model.Document;
 import com.solr.service.FeedGeneratorService;
+import com.solr.service.IndexerService;
 
 @RestController
 @RequestMapping("/api")
@@ -25,10 +26,14 @@ public class SolrController {
 	
 	@Autowired
     private FeedGeneratorService feedGeneratorService;
+	
+	@Autowired
+    private IndexerService indexerService;
     
     @GetMapping("/generate")
     public ResponseEntity<String> generateFeed() throws Exception {
-        feedGeneratorService.feedContentToSolr();
+        //feedGeneratorService.feedContentToSolr();
+    	indexerService.feedContentToSolr();
         return ResponseEntity.ok("Feed generated");
     }
     
